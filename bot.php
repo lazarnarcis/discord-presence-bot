@@ -29,6 +29,7 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
         $sessionId = $voiceState->session_id;
         $username = $voiceState->user->username;
         $deafened = $voiceState->self_deaf;
+        $currentDate = date('Y-m-d');
 
         if ($channelId && $sessionId) {
             if (!isset($voiceStates[$userId])) {
@@ -40,13 +41,13 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
                 }
 
                 $currentTime = time();
-                $query = "INSERT INTO voice_presence (user_id, join_time, channel_id, username) VALUES ('$userId', '$currentTime', '$channelId', '$username')";
+                $query = "INSERT INTO voice_presence (user_id, date, total_time, channel_id, username, closed) VALUES ('$userId', '$currentDate', 0, '$channelId', '$username', 0)";
                 $mysqli->query($query);
 
                 $voiceStates[$userId] = [
                     'channel_id' => $channelId,
                     'join_time' => $currentTime,
-                    'idle_notified' => false 
+                    'idle_notified' => false
                 ];
 
                 if (!isset($idleTimers[$userId])) {
@@ -67,7 +68,7 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
             $currentTime = time();
             $joinTime = $voiceStates[$userId]['join_time'];
             $totalTime = $currentTime - $joinTime;
-            $query = "UPDATE voice_presence SET leave_time = '$currentTime', total_time = total_time + '$totalTime' WHERE user_id = '$userId' AND leave_time IS NULL";
+            $query = "UPDATE voice_presence SET total_time = total_time + '$totalTime', closed = 1 WHERE user_id = '$userId' AND date = '$currentDate' AND closed = 0";
             $mysqli->query($query);
 
             unset($voiceStates[$userId]);
@@ -90,6 +91,7 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
 
     $discord->loop->addPeriodicTimer(10, function () use ($discord, $mysqli, &$voiceStates, &$deafenTimers, &$idleTimers) {
         $currentTime = time();
+        $currentDate = date('Y-m-d');
 
         foreach ($deafenTimers as $userId => $startTime) {
             if ($currentTime - $startTime >= 2700) {
@@ -125,7 +127,7 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
         foreach ($voiceStates as $userId => $state) {
             $joinTime = $state['join_time'];
             $elapsedTime = $currentTime - $joinTime;
-            $query = "UPDATE voice_presence SET total_time = total_time + '$elapsedTime', join_time = '$currentTime' WHERE user_id = '$userId' AND leave_time IS NULL";
+            $query = "UPDATE voice_presence SET total_time = total_time + '$elapsedTime' WHERE user_id = '$userId' AND date = '$currentDate' AND closed = 0";
             $mysqli->query($query);
             $voiceStates[$userId]['join_time'] = $currentTime;
         }
