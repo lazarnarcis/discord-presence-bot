@@ -32,8 +32,8 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
 
         if ($channelId && $sessionId) {
             if (!isset($voiceStates[$userId])) {
-                foreach ($voiceStates as $existingUserId => $existingChannelId) {
-                    if ($existingChannelId === $channelId && $existingUserId !== $userId) {
+                foreach ($voiceStates as $existingUserId => $existingData) {
+                    if ($existingData['channel_id'] === $channelId && $existingUserId !== $userId) {
                         $user = $discord->users->get('id', $existingUserId);
                         $user->sendMessage("$username has joined your voice channel.");
                     }
@@ -41,11 +41,13 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
 
                 $currentTime = time();
                 $query = "INSERT INTO voice_presence (user_id, join_time, channel_id, username) VALUES ('$userId', '$currentTime', '$channelId', '$username')";
-                $mysqli->begin_transaction();
                 $mysqli->query($query);
-                $mysqli->commit();
 
-                $voiceStates[$userId] = $channelId;
+                $voiceStates[$userId] = [
+                    'channel_id' => $channelId,
+                    'join_time' => $currentTime,
+                    'idle_notified' => false 
+                ];
 
                 if (!isset($idleTimers[$userId])) {
                     $idleTimers[$userId] = time();
@@ -63,10 +65,10 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
             }
         } elseif (!$channelId && isset($voiceStates[$userId])) {
             $currentTime = time();
-            $query = "UPDATE voice_presence SET leave_time = '$currentTime', total_time = total_time + ('$currentTime' - join_time) WHERE user_id = '$userId' AND leave_time IS NULL";
-            $mysqli->begin_transaction();
+            $joinTime = $voiceStates[$userId]['join_time'];
+            $totalTime = $currentTime - $joinTime;
+            $query = "UPDATE voice_presence SET leave_time = '$currentTime', total_time = total_time + '$totalTime' WHERE user_id = '$userId' AND leave_time IS NULL";
             $mysqli->query($query);
-            $mysqli->commit();
 
             unset($voiceStates[$userId]);
             unset($deafenTimers[$userId]);
@@ -86,15 +88,15 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
         }
     });
 
-    $discord->loop->addPeriodicTimer(60, function () use ($discord, &$deafenTimers, &$voiceStates, &$idleTimers) {
+    $discord->loop->addPeriodicTimer(10, function () use ($discord, $mysqli, &$voiceStates, &$deafenTimers, &$idleTimers) {
         $currentTime = time();
 
         foreach ($deafenTimers as $userId => $startTime) {
-            if ($currentTime - $startTime >= 2700) { 
+            if ($currentTime - $startTime >= 2700) {
                 if (isset($voiceStates[$userId])) {
                     $guild = $discord->guilds->first();
                     $member = $guild->members->get('id', $userId);
-                    $member->moveMember(null);  
+                    $member->moveMember(null);
                     unset($deafenTimers[$userId]);
                 }
             }
@@ -102,8 +104,11 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
 
         foreach ($idleTimers as $userId => $startTime) {
             if ($currentTime - $startTime >= 600 && ($currentTime - $startTime) < 660) {
-                $user = $discord->users->get('id', $userId);
-                $user->sendMessage("You are now Idle. You will be disconnected after 10 minutes of being idle!");
+                if (!$voiceStates[$userId]['idle_notified']) {
+                    $user = $discord->users->get('id', $userId);
+                    $user->sendMessage("You are now Idle. You will be disconnected after 10 minutes of being idle!");
+                    $voiceStates[$userId]['idle_notified'] = true;
+                }
             } elseif ($currentTime - $startTime >= 1200) {
                 if (isset($voiceStates[$userId])) {
                     $guild = $discord->guilds->first();
@@ -112,8 +117,17 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
                     $user = $discord->users->get('id', $userId);
                     $user->sendMessage("You have been disconnected from the voice channel because you were AFK!");
                     unset($idleTimers[$userId]);
+                    unset($voiceStates[$userId]);
                 }
             }
+        }
+
+        foreach ($voiceStates as $userId => $state) {
+            $joinTime = $state['join_time'];
+            $elapsedTime = $currentTime - $joinTime;
+            $query = "UPDATE voice_presence SET total_time = total_time + '$elapsedTime', join_time = '$currentTime' WHERE user_id = '$userId' AND leave_time IS NULL";
+            $mysqli->query($query);
+            $voiceStates[$userId]['join_time'] = $currentTime;
         }
     });
 });
