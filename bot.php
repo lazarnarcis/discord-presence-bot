@@ -31,6 +31,12 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
         $deafened = $voiceState->self_deaf;
         $currentDate = date('Y-m-d');
 
+        $channelName = null;
+        if ($channelId) {
+            $channel = $discord->getChannel($channelId);
+            $channelName = $channel ? $channel->name : null;
+        }
+
         if ($channelId && $sessionId) {
             if (!isset($voiceStates[$userId])) {
                 foreach ($voiceStates as $existingUserId => $existingData) {
@@ -41,8 +47,13 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
                 }
 
                 $currentTime = time();
-                $query = "INSERT INTO voice_presence (user_id, date, total_time, channel_id, username, closed) VALUES ('$userId', '$currentDate', 0, '$channelId', '$username', 0)";
-                $mysqli->query($query);
+                $query = "SELECT * FROM voice_presence WHERE user_id = '$userId' AND date = '$currentDate' AND closed = 0";
+                $result = $mysqli->query($query);
+
+                if ($result->num_rows == 0) {
+                    $query = "INSERT INTO voice_presence (user_id, date, total_time, channel_id, channel_name, username, closed) VALUES ('$userId', '$currentDate', 0, '$channelId', '$channelName', '$username', 0)";
+                    $mysqli->query($query);
+                }
 
                 $voiceStates[$userId] = [
                     'channel_id' => $channelId,
