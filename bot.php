@@ -100,7 +100,7 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
         }
     });
 
-    $discord->loop->addPeriodicTimer(10, function () use ($discord, $mysqli, &$voiceStates, &$deafenTimers, &$idleTimers) {
+    $discord->loop->addPeriodicTimer(3, function () use ($discord, $mysqli, &$voiceStates, &$deafenTimers, &$idleTimers) {
         $currentTime = time();
         $currentDate = date('Y-m-d');
 
