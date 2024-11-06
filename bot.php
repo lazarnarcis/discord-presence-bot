@@ -29,7 +29,9 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
     foreach ($guild->roles as $role) {
         $roleName = $mysqli->real_escape_string($role->name);
         $query = "INSERT INTO discord_roles (name) VALUES ('$roleName')";
-        if ($roleName != "@everyone") {
+
+        $notAdd = ['@everyone', 'Member', "Development Hub"];
+        if (!in_array($roleName, $notAdd)) {
             $mysqli->query($query);
         }
     }
