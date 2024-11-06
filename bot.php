@@ -23,6 +23,17 @@ $idleTimers = [];
 $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenTimers, &$idleTimers) {
     echo "Bot is ready.", PHP_EOL;
 
+    $guild = $discord->guilds->first(); 
+    $query = "DELETE FROM discord_roles";
+    $mysqli->query($query);
+    foreach ($guild->roles as $role) {
+        $roleName = $mysqli->real_escape_string($role->name);
+        $query = "INSERT INTO discord_roles (name) VALUES ('$roleName')";
+        if ($roleName != "@everyone") {
+            $mysqli->query($query);
+        }
+    }
+
     $discord->on(Event::VOICE_STATE_UPDATE, function ($voiceState) use ($discord, $mysqli, &$voiceStates, &$deafenTimers, &$idleTimers) {
         $userId = $voiceState->user_id;
         $channelId = $voiceState->channel_id;
