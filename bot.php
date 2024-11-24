@@ -38,82 +38,74 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
 
     $discord->on(Event::VOICE_STATE_UPDATE, function ($voiceState) use ($discord, $mysqli, &$voiceStates, &$deafenTimers, &$idleTimers) {
         $userId = $voiceState->user_id;
-        $channelId = $voiceState->channel_id;
-        $sessionId = $voiceState->session_id;
+        $newChannelId = $voiceState->channel_id;
         $username = $voiceState->user->username;
-        $deafened = $voiceState->self_deaf;
         $currentDate = date('Y-m-d');
 
-        $channelName = null;
-        if ($channelId) {
-            $channel = $discord->getChannel($channelId);
-            $channelName = $channel ? $channel->name : null;
+        $newChannelName = null;
+        if ($newChannelId) {
+            $channel = $discord->getChannel($newChannelId);
+            $newChannelName = $channel ? $channel->name : null;
         }
 
-        if ($channelId && $sessionId) {
-            if (!isset($voiceStates[$userId])) {
-                foreach ($voiceStates as $existingUserId => $existingData) {
-                    if ($existingData['channel_id'] === $channelId && $existingUserId !== $userId) {
-                        $user = $discord->users->get('id', $existingUserId);
-                        $user->sendMessage("$username has joined your voice channel.");
-                    }
-                }
+        $currentTime = time();
 
-                $currentTime = time();
-                $query = "SELECT * FROM voice_presence WHERE user_id = '$userId' AND date = '$currentDate' AND closed = 0";
-                $result = $mysqli->query($query);
+        // Dacă utilizatorul a părăsit canalul
+        if (!$newChannelId) {
+            if (isset($voiceStates[$userId])) {
+                $joinTime = $voiceStates[$userId]['join_time'];
+                $previousChannelId = $voiceStates[$userId]['channel_id'];
+                $totalTime = $currentTime - $joinTime;
 
-                if ($result->num_rows == 0) {
-                    $query = "INSERT INTO voice_presence (user_id, date, total_time, channel_id, channel_name, username, closed) VALUES ('$userId', '$currentDate', 0, '$channelId', '$channelName', '$username', 0)";
-                    $mysqli->query($query);
-                }
+                $query = "UPDATE voice_presence SET total_time = total_time + '$totalTime', closed = 1 
+                          WHERE user_id = '$userId' AND date = '$currentDate' AND channel_id = '$previousChannelId' AND closed = 0";
+                $mysqli->query($query);
 
-                $voiceStates[$userId] = [
-                    'channel_id' => $channelId,
-                    'join_time' => $currentTime,
-                    'idle_notified' => false
-                ];
-
-                if (!isset($idleTimers[$userId])) {
-                    $idleTimers[$userId] = time();
-                }
-            }
-
-            if ($deafened) {
-                if (!isset($deafenTimers[$userId])) {
-                    $user = $discord->users->get('id', $userId);
-                    $user->sendMessage("You have deafened yourself. If you remain deafened for 45 minutes, you will be removed from the voice channel.");
-                    $deafenTimers[$userId] = time();
-                }
-            } else {
+                unset($voiceStates[$userId]);
+                unset($idleTimers[$userId]);
                 unset($deafenTimers[$userId]);
             }
-        } elseif (!$channelId && isset($voiceStates[$userId])) {
-            $currentTime = time();
-            $joinTime = $voiceStates[$userId]['join_time'];
-            $totalTime = $currentTime - $joinTime;
-            $query = "UPDATE voice_presence SET total_time = total_time + '$totalTime', closed = 1 WHERE user_id = '$userId' AND date = '$currentDate' AND closed = 0";
+            return; // Nu face nimic pentru utilizatorii care părăsesc canalul
+        }
+
+        // Dacă utilizatorul intră pentru prima dată pe un canal
+        if (!isset($voiceStates[$userId])) {
+            $query = "INSERT INTO voice_presence (user_id, date, total_time, channel_id, channel_name, username, closed) 
+                      VALUES ('$userId', '$currentDate', 0, '$newChannelId', '$newChannelName', '$username', 0)";
             $mysqli->query($query);
 
-            unset($voiceStates[$userId]);
-            unset($deafenTimers[$userId]);
-            unset($idleTimers[$userId]);
-        } elseif (isset($voiceStates[$userId])) {
-            if ($deafened && !isset($deafenTimers[$userId])) {
-                $user = $discord->users->get('id', $userId);
-                $user->sendMessage("You have deafened yourself. If you remain deafened for 45 minutes, you will be removed from the voice channel.");
-                $deafenTimers[$userId] = time();
-            } elseif (!$deafened && isset($deafenTimers[$userId])) {
-                unset($deafenTimers[$userId]);
-            }
+            $voiceStates[$userId] = [
+                'channel_id' => $newChannelId,
+                'join_time' => $currentTime,
+                'idle_notified' => false,
+            ];
 
-            if (!isset($deafenTimers[$userId])) {
-                $idleTimers[$userId] = time();
-            }
+            $idleTimers[$userId] = $currentTime;
+        } elseif ($voiceStates[$userId]['channel_id'] !== $newChannelId) {
+            // Dacă utilizatorul schimbă canalul
+            $previousChannelId = $voiceStates[$userId]['channel_id'];
+            $joinTime = $voiceStates[$userId]['join_time'];
+            $totalTime = $currentTime - $joinTime;
+
+            $query = "UPDATE voice_presence SET total_time = total_time + '$totalTime', closed = 1 
+                      WHERE user_id = '$userId' AND date = '$currentDate' AND channel_id = '$previousChannelId' AND closed = 0";
+            $mysqli->query($query);
+
+            $query = "INSERT INTO voice_presence (user_id, date, total_time, channel_id, channel_name, username, closed) 
+                      VALUES ('$userId', '$currentDate', 0, '$newChannelId', '$newChannelName', '$username', 0)";
+            $mysqli->query($query);
+
+            $voiceStates[$userId] = [
+                'channel_id' => $newChannelId,
+                'join_time' => $currentTime,
+                'idle_notified' => false,
+            ];
+
+            $idleTimers[$userId] = $currentTime;
         }
     });
 
-    $discord->loop->addPeriodicTimer(3, function () use ($discord, $mysqli, &$voiceStates, &$deafenTimers, &$idleTimers) {
+    $discord->loop->addPeriodicTimer(1, function () use ($discord, $mysqli, &$voiceStates, &$deafenTimers, &$idleTimers) {
         $currentTime = time();
         $currentDate = date('Y-m-d');
 
@@ -151,6 +143,7 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
         foreach ($voiceStates as $userId => $state) {
             $joinTime = $state['join_time'];
             $elapsedTime = $currentTime - $joinTime;
+
             $query = "UPDATE voice_presence SET total_time = total_time + '$elapsedTime' WHERE user_id = '$userId' AND date = '$currentDate' AND closed = 0";
             $mysqli->query($query);
             $voiceStates[$userId]['join_time'] = $currentTime;
@@ -159,4 +152,3 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
 });
 
 $discord->run();
-?>
