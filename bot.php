@@ -50,7 +50,6 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
 
         $currentTime = time();
 
-        // Dacă utilizatorul a părăsit canalul
         if (!$newChannelId) {
             if (isset($voiceStates[$userId])) {
                 $joinTime = $voiceStates[$userId]['join_time'];
@@ -65,10 +64,9 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
                 unset($idleTimers[$userId]);
                 unset($deafenTimers[$userId]);
             }
-            return; // Nu face nimic pentru utilizatorii care părăsesc canalul
+            return;
         }
 
-        // Dacă utilizatorul intră pentru prima dată pe un canal
         if (!isset($voiceStates[$userId])) {
             $query = "INSERT INTO voice_presence (user_id, date, total_time, channel_id, channel_name, username, closed) 
                       VALUES ('$userId', '$currentDate', 0, '$newChannelId', '$newChannelName', '$username', 0)";
@@ -82,7 +80,6 @@ $discord->on('ready', function ($discord) use ($mysqli, &$voiceStates, &$deafenT
 
             $idleTimers[$userId] = $currentTime;
         } elseif ($voiceStates[$userId]['channel_id'] !== $newChannelId) {
-            // Dacă utilizatorul schimbă canalul
             $previousChannelId = $voiceStates[$userId]['channel_id'];
             $joinTime = $voiceStates[$userId]['join_time'];
             $totalTime = $currentTime - $joinTime;
