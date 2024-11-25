@@ -37,8 +37,11 @@ try {
             $mysqli->query($query);
 
             foreach ($guild->roles as $role) {
+                $log->info('narcis5 '.json_encode($role));
                 $roleName = $mysqli->real_escape_string($role->name);
-                $query = "INSERT INTO discord_roles (name) VALUES ('$roleName')";
+                $intColor = $role->color;
+                $hexColor = sprintf("#%06X", $intColor);
+                $query = "INSERT INTO discord_roles (name, color) VALUES ('$roleName', '$hexColor')";
 
                 $notAdd = ['@everyone', 'Member', "Development Hub"];
                 if (!in_array($roleName, $notAdd)) {
