@@ -1,4 +1,12 @@
 <?php
+$lockFile = '/tmp/get_discord_members.lock';
+if (file_exists($lockFile)) {
+    echo "Script already running. Exiting...\n";
+    exit;
+}
+
+file_put_contents($lockFile, getmypid());
+
 require 'vendor/autoload.php';
 
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
@@ -72,3 +80,5 @@ try {
 } catch (Exception $e) {
     $log->error("Script encountered a fatal error: " . $e->getMessage());
 }
+
+unlink($lockFile);
