@@ -75,10 +75,9 @@ try {
             $log->error("Failed to fetch members: " . $e->getMessage());
         }
     });
+    unlink($lockFile);
 
     $discord->run();
 } catch (Exception $e) {
     $log->error("Script encountered a fatal error: " . $e->getMessage());
 }
-
-unlink($lockFile);
