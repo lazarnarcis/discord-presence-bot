@@ -42,7 +42,7 @@ try {
                 $hexColor = sprintf("#%06X", $intColor);
                 $query = "INSERT INTO discord_roles (name, color) VALUES ('$roleName', '$hexColor')";
 
-                $notAdd = ['@everyone', "Development Hub"];
+                $notAdd = ['@everyone'];
                 if (!in_array($roleName, $notAdd)) {
                     $mysqli->query($query);
                 }
